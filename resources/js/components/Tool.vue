@@ -1,18 +1,18 @@
 <template>
-    <default-field :field="field">
+    <default-field :field="field" :errors="errors">
         <template slot="field">
             <search-input
-                v-if="isSearchable && !isLocked"
-                :data-testid="`${field.resourceName}-search-input`"
-                @input="performSearch"
-                @clear="clearSelection"
-                @selected="selectResource"
-                :error="hasError"
-                :value='selectedResource'
-                :data='availableResources'
-                trackBy='value'
-                searchBy='display'
-                class="mb-3"
+                    v-if="isSearchable && !isLocked && !isReadOnly"
+                    :data-testid="`${field.resourceName}-search-input`"
+                    @input="performSearch"
+                    @clear="clearSelection"
+                    @selected="selectResource"
+                    :error="hasError"
+                    :value='selectedResource'
+                    :data='availableResources'
+                    trackBy='value'
+                    searchBy='display'
+                    class="mb-3"
             >
                 <div slot="default" v-if="selectedResource" class="flex items-center">
                     <div v-if="selectedResource.avatar" class="mr-3">
@@ -31,26 +31,30 @@
                 </div>
             </search-input>
 
-            <select
-                v-if="!isSearchable || isLocked"
-                class="form-control form-select mb-3 w-full"
-                :class="{ 'border-danger': hasError }"
-                :data-testid="`${field.resourceName}-select`"
-                :dusk="field.attribute"
-                @change="selectResourceFromSelectControl"
-                :disabled="isLocked"
+            <select-control
+                    v-if="!isSearchable || isLocked || isReadOnly"
+                    class="form-control form-select mb-3 w-full"
+                    :class="{ 'border-danger': hasError }"
+                    :data-testid="`${field.resourceName}-select`"
+                    :dusk="field.attribute"
+                    @change="selectResourceFromSelectControl"
+                    :disabled="isLocked || isReadOnly"
+                    :options="availableResources"
+                    :selected="selectedResourceId"
+                    label="display"
             >
-                <option value="" disabled selected>{{__('Choose')}} {{ field.name }}</option>
+                <!-- <option value="" disabled selected>{{__('Choose')}} {{ field.name }}</option> -->
+                <option value="" selected :disabled="!field.nullable">&mdash;</option>
 
                 <option
-                    v-for="resource in availableResources"
-                    :key="resource.value"
-                    :value="resource.value"
-                    :selected="selectedResourceId == resource.value"
+                        v-for="resource in availableResources"
+                        :key="resource.value"
+                        :value="resource.value"
+                        :selected="selectedResourceId == resource.value"
                 >
                     {{ resource.display}}
                 </option>
-            </select>
+            </select-control>
 
             <!-- Trashed State -->
             <div v-if="softDeletes && !isLocked">
@@ -71,217 +75,217 @@
 </template>
 
 <script>
-import _ from 'lodash'
-import storage from '../storage/BelongsToFieldStorage'
-import { TogglesTrashed, PerformsSearches, HandlesValidationErrors } from 'laravel-nova'
-import { mixin as clickaway } from 'vue-clickaway'
+    import _ from 'lodash'
+    import storage from '../storage/BelongsToFieldStorage'
+    import { TogglesTrashed, PerformsSearches, HandlesValidationErrors } from 'laravel-nova'
+    import { mixin as clickaway } from 'vue-clickaway'
 
-export default {
-    mixins: [TogglesTrashed, PerformsSearches, HandlesValidationErrors],
-    props: {
-        resourceName: String,
-        field: Object,
-        viaResource: {},
-        viaResourceId: {},
-        viaRelationship: {},
-    },
+    export default {
+        mixins: [TogglesTrashed, PerformsSearches, HandlesValidationErrors],
+        props: {
+            resourceName: String,
+            field: Object,
+            viaResource: {},
+            viaResourceId: {},
+            viaRelationship: {},
+        },
 
-    data: () => ({
-        availableResources: [],
-        initializingWithExistingResource: false,
-        selectedResource: null,
-        selectedResourceId: null,
-        softDeletes: false,
-        withTrashed: false,
-        search: '',
-        hasPerformedPrepopulation: false,
-    }),
+        data: () => ({
+            availableResources: [],
+            initializingWithExistingResource: false,
+            selectedResource: null,
+            selectedResourceId: null,
+            softDeletes: false,
+            withTrashed: false,
+            search: '',
+            hasPerformedPrepopulation: false,
+        }),
 
-    /**
-     * Mount the component.
-     */
-    mounted() {
-        this.initializeComponent()
-    },
+        /**
+         * Mount the component.
+         */
+        mounted() {
+            this.initializeComponent()
+        },
 
-    methods: {
-        initializeComponent() {
-            this.withTrashed = false
+        methods: {
+            initializeComponent() {
+                this.withTrashed = false
 
-            // If a user is editing an existing resource with this relation
-            // we'll have a belongsToId on the field, and we should prefill
-            // that resource in this field
-            if (this.editingExistingResource) {
-                this.initializingWithExistingResource = true
-                this.selectedResourceId = this.field.belongsToId
-            }
-
-            // If the user is creating this resource via a related resource's index
-            // page we'll have a viaResource and viaResourceId in the params and
-            // should prefill the resource in this field with that information
-            if (this.creatingViaRelatedResource) {
-                this.initializingWithExistingResource = true
-                this.selectedResourceId = this.viaResourceId
-            }
-
-            if (this.shouldSelectInitialResource && !this.isSearchable) {
-                // If we should select the initial resource but the field is not
-                // searchable we should load all of the available resources into the
-                // field first and select the initial option
-                this.initializingWithExistingResource = false
-                this.getAvailableResources().then(() => this.selectInitialResource())
-            } else if (this.shouldSelectInitialResource && this.isSearchable) {
-                // If we should select the initial resource and the field is
-                // searchable, we won't load all the resources but we will select
-                // the initial option
-                this.getAvailableResources().then(() => this.selectInitialResource())
-            } else if (!this.shouldSelectInitialResource && !this.isSearchable) {
-                // If we don't need to select an initial resource because the user
-                // came to create a resource directly and there's no parent resource,
-                // and the field is searchable we'll just load all of the resources
-                this.getAvailableResources()
-            }
-
-            if (this.isSearchable  && this.shouldPrepopulate) {
-                if (this.field.prepopulate_query) {
-                    this.search = this.field.prepopulate_query;
+                // If a user is editing an existing resource with this relation
+                // we'll have a belongsToId on the field, and we should prefill
+                // that resource in this field
+                if (this.editingExistingResource) {
+                    this.initializingWithExistingResource = true
+                    this.selectedResourceId = this.field.belongsToId
                 }
-                
-                this.hasPerformedPrepopulation = true;
-                this.getAvailableResources()
-                this.search = '';
-            }
 
-            this.determineIfSoftDeletes()
+                // If the user is creating this resource via a related resource's index
+                // page we'll have a viaResource and viaResourceId in the params and
+                // should prefill the resource in this field with that information
+                if (this.creatingViaRelatedResource) {
+                    this.initializingWithExistingResource = true
+                    this.selectedResourceId = this.viaResourceId
+                }
 
-            this.field.fill = this.fill
-        },
+                if (this.shouldSelectInitialResource && !this.isSearchable) {
+                    // If we should select the initial resource but the field is not
+                    // searchable we should load all of the available resources into the
+                    // field first and select the initial option
+                    this.initializingWithExistingResource = false
+                    this.getAvailableResources().then(() => this.selectInitialResource())
+                } else if (this.shouldSelectInitialResource && this.isSearchable) {
+                    // If we should select the initial resource and the field is
+                    // searchable, we won't load all the resources but we will select
+                    // the initial option
+                    this.getAvailableResources().then(() => this.selectInitialResource())
+                } else if (!this.shouldSelectInitialResource && !this.isSearchable) {
+                    // If we don't need to select an initial resource because the user
+                    // came to create a resource directly and there's no parent resource,
+                    // and the field is searchable we'll just load all of the resources
+                    this.getAvailableResources()
+                }
 
-        /**
-         * Select a resource using the <select> control
-         */
-        selectResourceFromSelectControl(e) {
-            this.selectedResourceId = e.target.value
-            this.selectInitialResource()
-        },
-
-        /**
-         * Fill the forms formData with details from this field
-         */
-        fill(formData) {
-            if (this.selectedResource) {
-                formData.append(this.field.attribute, this.selectedResource.value)
-                formData.append(this.field.attribute + '_trashed', this.withTrashed)
-            }
-        },
-
-        /**
-         * Get the resources that may be related to this resource.
-         */
-        getAvailableResources() {
-            return storage
-                .fetchAvailableResources(this.resourceName, this.field.attribute, this.queryParams)
-                .then(({ data: { resources, softDeletes, withTrashed } }) => {
-                    if (this.initializingWithExistingResource || !this.isSearchable) {
-                        this.withTrashed = withTrashed
+                if (this.isSearchable  && this.shouldPrepopulate) {
+                    if (this.field.prepopulate_query) {
+                        this.search = this.field.prepopulate_query;
                     }
 
-                    // Turn off initializing the existing resource after the first time
-                    this.initializingWithExistingResource = false
-                    this.availableResources = resources
-                    this.softDeletes = softDeletes
+                    this.hasPerformedPrepopulation = true;
+                    this.getAvailableResources()
+                    this.search = '';
+                }
+
+                this.determineIfSoftDeletes()
+
+                this.field.fill = this.fill
+            },
+
+            /**
+             * Select a resource using the <select> control
+             */
+            selectResourceFromSelectControl(e) {
+                this.selectedResourceId = e.target.value
+                this.selectInitialResource()
+            },
+
+            /**
+             * Fill the forms formData with details from this field
+             */
+            fill(formData) {
+                if (this.selectedResource) {
+                    formData.append(this.field.attribute, this.selectedResource.value)
+                    formData.append(this.field.attribute + '_trashed', this.withTrashed)
+                }
+            },
+
+            /**
+             * Get the resources that may be related to this resource.
+             */
+            getAvailableResources() {
+                return storage
+                    .fetchAvailableResources(this.resourceName, this.field.attribute, this.queryParams)
+                    .then(({ data: { resources, softDeletes, withTrashed } }) => {
+                        if (this.initializingWithExistingResource || !this.isSearchable) {
+                            this.withTrashed = withTrashed
+                        }
+
+                        // Turn off initializing the existing resource after the first time
+                        this.initializingWithExistingResource = false
+                        this.availableResources = resources
+                        this.softDeletes = softDeletes
+                    })
+            },
+
+            /**
+             * Determine if the relatd resource is soft deleting.
+             */
+            determineIfSoftDeletes() {
+                return storage.determineIfSoftDeletes(this.field.resourceName).then(response => {
+                    this.softDeletes = response.data.softDeletes
                 })
+            },
+
+            /**
+             * Determine if the given value is numeric.
+             */
+            isNumeric(value) {
+                return !isNaN(parseFloat(value)) && isFinite(value)
+            },
+
+            /**
+             * Select the initial selected resource
+             */
+            selectInitialResource() {
+                this.selectedResource = _.find(
+                    this.availableResources,
+                    r => r.value == this.selectedResourceId
+                )
+            },
+
+            /**
+             * Toggle the trashed state of the search
+             */
+            toggleWithTrashed() {
+                this.withTrashed = !this.withTrashed
+
+                // Reload the data if the component doesn't support searching
+                if (!this.isSearchable) {
+                    this.getAvailableResources()
+                }
+            },
         },
 
-        /**
-         * Determine if the relatd resource is soft deleting.
-         */
-        determineIfSoftDeletes() {
-            return storage.determineIfSoftDeletes(this.field.resourceName).then(response => {
-                this.softDeletes = response.data.softDeletes
-            })
-        },
+        computed: {
+            /**
+             * Determine if we are editing and existing resource
+             */
+            editingExistingResource() {
+                return Boolean(this.field.belongsToId)
+            },
 
-        /**
-         * Determine if the given value is numeric.
-         */
-        isNumeric(value) {
-            return !isNaN(parseFloat(value)) && isFinite(value)
-        },
+            /**
+             * Determine if we are creating a new resource via a parent relation
+             */
+            creatingViaRelatedResource() {
+                return this.viaResource == this.field.resourceName && this.viaResourceId
+            },
 
-        /**
-         * Select the initial selected resource
-         */
-        selectInitialResource() {
-            this.selectedResource = _.find(
-                this.availableResources,
-                r => r.value == this.selectedResourceId
-            )
-        },
+            /**
+             * Determine if we should select an initial resource when mounting this field
+             */
+            shouldSelectInitialResource() {
+                return Boolean(this.editingExistingResource || this.creatingViaRelatedResource)
+            },
 
-        /**
-         * Toggle the trashed state of the search
-         */
-        toggleWithTrashed() {
-            this.withTrashed = !this.withTrashed
+            /**
+             * Determine if the related resources is searchable
+             */
+            isSearchable() {
+                return this.field.searchable
+            },
 
-            // Reload the data if the component doesn't support searching
-            if (!this.isSearchable) {
-                this.getAvailableResources()
-            }
-        },
-    },
+            shouldPrepopulate() {
+                return this.field.prepopulate || false;
+            },
 
-    computed: {
-        /**
-         * Determine if we are editing and existing resource
-         */
-        editingExistingResource() {
-            return Boolean(this.field.belongsToId)
-        },
+            /**
+             * Get the query params for getting available resources
+             */
+            queryParams() {
+                return {
+                    params: {
+                        current: this.selectedResourceId,
+                        first: this.initializingWithExistingResource,
+                        search: this.search,
+                        withTrashed: this.withTrashed,
+                    },
+                }
+            },
 
-        /**
-         * Determine if we are creating a new resource via a parent relation
-         */
-        creatingViaRelatedResource() {
-            return this.viaResource == this.field.resourceName && this.viaResourceId
+            isLocked() {
+                return this.viaResource == this.field.resourceName
+            },
         },
-
-        /**
-         * Determine if we should select an initial resource when mounting this field
-         */
-        shouldSelectInitialResource() {
-            return Boolean(this.editingExistingResource || this.creatingViaRelatedResource)
-        },
-
-        /**
-         * Determine if the related resources is searchable
-         */
-        isSearchable() {
-            return this.field.searchable
-        },
-
-        shouldPrepopulate() {
-            return this.field.prepopulate || false;
-        },
-
-        /**
-         * Get the query params for getting available resources
-         */
-        queryParams() {
-            return {
-                params: {
-                    current: this.selectedResourceId,
-                    first: this.initializingWithExistingResource,
-                    search: this.search,
-                    withTrashed: this.withTrashed,
-                },
-            }
-        },
-
-        isLocked() {
-            return this.viaResource == this.field.resourceName
-        },
-    },
-}
+    }
 </script>
