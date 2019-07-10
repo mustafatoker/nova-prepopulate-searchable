@@ -1,6 +1,6 @@
 <?php
 
-namespace AlexBowers\NovaPrepopulateSearchable;
+namespace MustafaTOKER\NovaPrepopulateSearchable;
 
 use Laravel\Nova\Nova;
 use Laravel\Nova\Events\ServingNova;
