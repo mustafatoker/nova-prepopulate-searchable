@@ -29,7 +29,9 @@ the search initially, before resetting the search to being empty (as it currentl
 
 - [Alex Bowers](https://github.com/alexbowers)
 - [Mustafa TOKER](https://github.com/mustafatoker)
-- [Burak Tekin](https://github.com/tekinburak)
+- [Burak TEKİN](https://github.com/tekinburak)
+- [Mustafa DEMİR](https://github.com/mstfdmr)
+- [Salih KANDEMİR](#)
 
 ## License
 
