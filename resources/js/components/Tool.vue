@@ -31,7 +31,7 @@
                 </div>
             </search-input>
 
-            <select-control
+            <select
                     v-if="!isSearchable || isLocked || isReadOnly"
                     class="form-control form-select mb-3 w-full"
                     :class="{ 'border-danger': hasError }"
@@ -54,7 +54,7 @@
                 >
                     {{ resource.display}}
                 </option>
-            </select-control>
+            </select>
 
             <!-- Trashed State -->
             <div v-if="softDeletes && !isLocked">
